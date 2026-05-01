@@ -1,0 +1,95 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      location:
+        description: 'Azure region'
+        required: true
+        default: 'westeurope'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  WORKLOAD_NAME: todo
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+  LOCATION: ${{ github.event.inputs.location || 'westeurope' }}
+
+jobs:
+  deploy:
+    name: Deploy to Azure
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create Resource Group
+        run: |
+          az group create \
+            --name "rg-${{ env.WORKLOAD_NAME }}-${{ env.ENVIRONMENT }}-${{ env.LOCATION }}" \
+            --location "${{ env.LOCATION }}" \
+            --tags environment=${{ env.ENVIRONMENT }} workload=${{ env.WORKLOAD_NAME }} owner=hackathon costCenter=hackathon
+
+      - name: What-If Deployment
+        run: |
+          az deployment group what-if \
+            --resource-group "rg-${{ env.WORKLOAD_NAME }}-${{ env.ENVIRONMENT }}-${{ env.LOCATION }}" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters environment=${{ env.ENVIRONMENT }} location=${{ env.LOCATION }}
+
+      - name: Deploy Infrastructure
+        run: |
+          az deployment group create \
+            --resource-group "rg-${{ env.WORKLOAD_NAME }}-${{ env.ENVIRONMENT }}-${{ env.LOCATION }}" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters environment=${{ env.ENVIRONMENT }} location=${{ env.LOCATION }} \
+            --name "deploy-${{ github.run_number }}"
+
+      - name: Verify Deployment
+        run: |
+          echo "📋 Deployed Resources:"
+          az resource list \
+            --resource-group "rg-${{ env.WORKLOAD_NAME }}-${{ env.ENVIRONMENT }}-${{ env.LOCATION }}" \
+            --output table
+
+          echo ""
+          echo "🌐 Web App Status:"
+          az webapp show \
+            --resource-group "rg-${{ env.WORKLOAD_NAME }}-${{ env.ENVIRONMENT }}-${{ env.LOCATION }}" \
+            --name "app-${{ env.WORKLOAD_NAME }}-${{ env.ENVIRONMENT }}-${{ env.LOCATION }}" \
+            --query "{name:name, state:state, url:defaultHostName}" \
+            --output table
+
+          echo ""
+          echo "🔒 SQL Server Public Access:"
+          az sql server show \
+            --resource-group "rg-${{ env.WORKLOAD_NAME }}-${{ env.ENVIRONMENT }}-${{ env.LOCATION }}" \
+            --name "sql-${{ env.WORKLOAD_NAME }}-${{ env.ENVIRONMENT }}-${{ env.LOCATION }}" \
+            --query "publicNetworkAccess" \
+            --output tsv

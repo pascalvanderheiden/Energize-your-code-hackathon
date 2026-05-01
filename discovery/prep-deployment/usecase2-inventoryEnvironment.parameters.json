@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "prefix": {
+      "value": "invuc2"
+    },
+    "location": {
+      "value": "norwayeast"
+    },
+    "adminUsername": {
+      "value": "azureadmin"
+    },
+    "adminPassword": {
+      "value": ""
+    },
+    "webVmCount": {
+      "value": 2
+    },
+    "appVmCount": {
+      "value": 2
+    },
+    "vmSize": {
+      "value": "Standard_D2s_v5"
+    },
+    "webDeployPackageUri": {
+      "value": "https://github.com/Azure/azure-quickstart-templates/raw/master/quickstarts/microsoft.web/web-app-vm-dsc/WebApplication3.zip"
+    },
+    "dscModulesUrl": {
+      "value": "https://github.com/Azure/azure-quickstart-templates/raw/master/quickstarts/microsoft.web/web-app-vm-dsc/ConfigureWebServer.ps1.zip"
+    },
+    "configurationFunction": {
+      "value": "ConfigureWebServer.ps1\\Main"
+    }
+  }
+}

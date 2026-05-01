@@ -1,0 +1,152 @@
+flowchart LR
+  RGTAGS["RG Tags (Microsoft.Resources/tags)\nUsecase=AgenticDiscovery\nExistingInfra=yes"]
+  Internet["Internet Users"] --> AGWPIP["Application Gateway Public IP"]
+
+  subgraph Hub["Hub VNet (10.100.0.0/16)"]
+    AZFW["Azure Firewall\nPolicy + Rule Collection Group"]
+  end
+
+  subgraph MgmtSpoke["Management Spoke VNet (10.120.0.0/16)"]
+    Bastion["Azure Bastion\nAzureBastionSubnet"]
+    MonPE["AMPLS Private Endpoint\nMonitoringPrivateEndpointSubnet"]
+  end
+
+  subgraph AppSpoke["Application Spoke VNet (10.110.0.0/16)"]
+    subgraph AGWSubnet["ApplicationGatewaySubnet (10.110.0.0/24)"]
+      AGW["Application Gateway WAF_v2"]
+    end
+
+    subgraph WebSubnet["WebSubnet (10.110.1.0/24)"]
+      WEB1["webvm0"]
+      WEB2["webvm1"]
+    end
+
+    subgraph AppSubnet["AppSubnet (10.110.2.0/24)"]
+      APPLB["Internal Load Balancer\n10.110.2.100:8080"]
+      APP1["appvm0"]
+      APP2["appvm1"]
+    end
+
+    WEBNSG["Web NSG"]
+    APPNSG["App NSG"]
+  end
+
+  subgraph DataSpoke["Data Spoke VNet (10.130.0.0/16)"]
+    SQLPE["SQL Private Endpoint\nSqlPrivateEndpointSubnet"]
+  end
+
+  SQLDB["Azure SQL Database\nPublic Network Access Disabled"]
+  UAMI["User-Assigned Managed Identity\ninvuc2-app-sql-uami"]
+
+  subgraph ObsSec["Observability and Security"]
+    LAW["Log Analytics Workspace"]
+    DCE["Data Collection Endpoint"]
+    DCR["VM Insights Data Collection Rule\nStreams: Microsoft-Perf + Microsoft-Event"]
+    AMPLS["Azure Monitor Private Link Scope"]
+    AMA["Azure Monitor Agent\non Web/App VMs\n(webvm0/1, appvm0/1)"]
+    NWSTORE["Flow Logs Storage Account\n(used when enableNsgFlowLogs=true)"]
+    TRAFFIC["Traffic Analytics\n(when flow logs enabled)"]
+    SQLAlert["SQL Security Alert Policy"]
+  end
+
+  NWRG["NetworkWatcherRG\nExisting NetworkWatcher_<region>"]
+
+  subgraph DNS["Private DNS Zones"]
+    DNSMon["privatelink.monitor.azure.com"]
+    DNSOms["privatelink.oms.opinsights.azure.com"]
+    DNSOds["privatelink.ods.opinsights.azure.com"]
+    DNSAgent["privatelink.agentsvc.azure-automation.net"]
+    DNSSql["privatelink.database.windows.net"]
+  end
+
+  AGWPIP --> AGW
+  AGW -->|"HTTP 80"| WEB1
+  AGW -->|"HTTP 80"| WEB2
+
+  WEB1 -->|"TCP 8080 via UDR -> Firewall"| AZFW
+  WEB2 -->|"TCP 8080 via UDR -> Firewall"| AZFW
+  AZFW -->|"Allowed by Firewall Policy"| APPLB
+  APPLB --> APP1
+  APPLB --> APP2
+
+  APP1 -->|"TCP 1433 via UDR -> Firewall"| AZFW
+  APP2 -->|"TCP 1433 via UDR -> Firewall"| AZFW
+  AZFW -->|"Allowed SQL traffic"| SQLPE
+  SQLPE --> SQLDB
+
+  UAMI --> APP1
+  UAMI --> APP2
+  UAMI -->|"Entra admin for SQL server"| SQLDB
+  APP1 -->|"MI token + SQL query"| SQLDB
+  APP2 -->|"MI token + SQL query"| SQLDB
+
+  Bastion -->|"RDP 3389 via Hub/Firewall"| AZFW
+  AZFW -->|"RDP allowed to Web/App NSGs"| WEB1
+  AZFW -->|"RDP allowed to Web/App NSGs"| WEB2
+  AZFW -->|"RDP allowed to Web/App NSGs"| APP1
+  AZFW -->|"RDP allowed to Web/App NSGs"| APP2
+
+  AMA --> WEB1
+  AMA --> WEB2
+  AMA --> APP1
+  AMA --> APP2
+  DCE --> DCR
+  AMA -->|"Extension completion dependency"| DCR
+  DCR --> LAW
+
+  WEBNSG -. NSG flow logs (optional) .-> NWRG
+  APPNSG -. NSG flow logs (optional) .-> NWRG
+  NWRG --> NWSTORE
+  NWRG --> TRAFFIC
+  TRAFFIC --> LAW
+
+  RGTAGS -. applied at RG scope .-> Hub
+  RGTAGS -. applied at RG scope .-> AppSpoke
+  RGTAGS -. applied at RG scope .-> MgmtSpoke
+  RGTAGS -. applied at RG scope .-> DataSpoke
+  RGTAGS -. applied at RG scope .-> ObsSec
+  RGTAGS -. applied at RG scope .-> DNS
+
+  AGW -. diagnostics .-> LAW
+  AZFW -. diagnostics .-> LAW
+  Bastion -. diagnostics .-> LAW
+  APPLB -. diagnostics .-> LAW
+  SQLDB -. metrics .-> LAW
+
+  AMPLS --> LAW
+  MonPE --> AMPLS
+  WEB1 -->|"HTTPS 443"| MonPE
+  WEB2 -->|"HTTPS 443"| MonPE
+  APP1 -->|"HTTPS 443"| MonPE
+  APP2 -->|"HTTPS 443"| MonPE
+
+  DNSSql --- SQLPE
+  DNSSql --- AppSpoke
+  DNSMon --- MonPE
+  DNSOms --- MonPE
+  DNSOds --- MonPE
+  DNSAgent --- MonPE
+
+  SQLAlert --> SQLDB
+
+  classDef ingress fill:#fff4cc,stroke:#a16207,color:#1f2937,stroke-width:1.5px;
+  classDef security fill:#ffdfe0,stroke:#9f1239,color:#1f2937,stroke-width:1.8px;
+  classDef compute fill:#dbeafe,stroke:#1d4ed8,color:#1f2937,stroke-width:1.5px;
+  classDef data fill:#dcfce7,stroke:#166534,color:#1f2937,stroke-width:1.5px;
+  classDef monitor fill:#fef3c7,stroke:#d97706,color:#1f2937,stroke-width:1.5px;
+
+  style Hub fill:#fff1f2,stroke:#be123c,stroke-width:1.5px,color:#111827
+  style MgmtSpoke fill:#eef2ff,stroke:#4338ca,stroke-width:1.5px,color:#111827
+  style AppSpoke fill:#eff6ff,stroke:#1d4ed8,stroke-width:1.5px,color:#111827
+  style DataSpoke fill:#ecfdf5,stroke:#15803d,stroke-width:1.5px,color:#111827
+  style ObsSec fill:#fff7ed,stroke:#c2410c,stroke-width:1.5px,color:#111827
+  style DNS fill:#f5f3ff,stroke:#6d28d9,stroke-width:1.5px,color:#111827
+  style AGWSubnet fill:#f8fafc,stroke:#64748b,stroke-width:1px,color:#111827
+  style WebSubnet fill:#f8fafc,stroke:#64748b,stroke-width:1px,color:#111827
+  style AppSubnet fill:#f8fafc,stroke:#64748b,stroke-width:1px,color:#111827
+
+  class Internet,AGWPIP,RGTAGS ingress;
+  class AZFW,AGW,Bastion security;
+  class WEB1,WEB2,APP1,APP2,APPLB,WEBNSG,APPNSG compute;
+  class SQLPE,SQLDB,DNSSql data;
+  class LAW,DCE,DCR,AMPLS,AMA,MonPE,SQLAlert,DNSMon,DNSOms,DNSOds,DNSAgent,NWRG,NWSTORE,TRAFFIC monitor;

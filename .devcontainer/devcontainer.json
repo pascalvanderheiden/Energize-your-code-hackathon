@@ -1,0 +1,53 @@
+{
+  "name": "Energize Your Code - Hackathon",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": {
+      "installBicep": true,
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/python:2": {
+      "version": "3.12"
+    },
+    "ghcr.io/devcontainers/features/terraform:1": {
+      "version": "latest",
+      "installTerraformDocs": true
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "github.copilot",
+        "github.copilot-chat",
+        "alfredoperez.speckit-companion",
+        "atman-dev.openspec-for-copilot",
+        "csharpfritz.squadui",
+        "ms-azuretools.vscode-azureresourcegroups",
+        "ms-azuretools.vscode-azurefunctions",
+        "ms-azuretools.vscode-bicep",
+        "hashicorp.terraform",
+        "ms-mssql.mssql",
+        "bierner.markdown-mermaid",
+        "MermaidChart.vscode-mermaid-chart",
+        "ms-vscode.azure-account",
+        "ms-azuretools.vscode-docker",
+        "ms-azuretools.azure-dev",
+        "ms-playwright.playwright"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "bicep.enableOutputDeploymentsPaneOnSave": true,
+        "files.associations": {
+          "*.bicep": "bicep"
+        }
+      }
+    }
+  },
+  "postCreateCommand": "az bicep install && pip install uv && npx playwright install --with-deps chromium && echo '✅ Dev environment ready! Choose your use case and run prompts in GitHub Copilot Chat to start the hackathon.'",
+  "remoteUser": "vscode"
+}

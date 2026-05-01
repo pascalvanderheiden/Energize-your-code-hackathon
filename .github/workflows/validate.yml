@@ -1,0 +1,57 @@
+name: Validate Infrastructure
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/validate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    name: Validate Bicep
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Azure CLI
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az bicep install
+            az bicep version
+
+      - name: Bicep Build - Networking Module
+        run: az bicep build --file infra/modules/networking.bicep
+
+      - name: Bicep Build - Database Module
+        run: az bicep build --file infra/modules/database.bicep
+
+      - name: Bicep Build - Web App Module
+        run: az bicep build --file infra/modules/webapp.bicep
+
+      - name: Bicep Build - Main Template
+        run: az bicep build --file infra/main.bicep
+
+      - name: Security Check - No Public Database Access
+        run: |
+          if grep -r "publicNetworkAccess.*Enabled" infra/; then
+            echo "❌ SECURITY VIOLATION: Found publicNetworkAccess set to Enabled"
+            exit 1
+          fi
+          echo "✅ No public database access found"
+
+      - name: Security Check - Managed Identity Configured
+        run: |
+          if ! grep -r "SystemAssigned" infra/; then
+            echo "⚠️ WARNING: No SystemAssigned managed identity found"
+          else
+            echo "✅ Managed identity configured"
+          fi
